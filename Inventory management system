@@ -1,0 +1,178 @@
+import sqlite3
+import bcrypt
+import tkinter as tk
+from tkinter import messagebox
+
+
+def initialize_db():
+    conn = sqlite3.connect('inventory.db')
+    cursor = conn.cursor()
+
+    # Create Users Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL
+    )''')
+
+    # Create Products Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS products (
+        product_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT,
+        price REAL NOT NULL,
+        quantity INTEGER NOT NULL,
+        low_stock_threshold INTEGER NOT NULL
+    )''')
+
+    # Create Sales Table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS sales (
+        sale_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        quantity_sold INTEGER NOT NULL,
+        sale_date TEXT NOT NULL,
+        FOREIGN KEY(product_id) REFERENCES products(product_id)
+    )''')
+
+    conn.commit()
+    conn.close()
+
+
+def register_user(username, password, role):
+    try:
+        conn = sqlite3.connect('inventory.db')
+        cursor = conn.cursor()
+
+        hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
+                       (username, hashed_password, role))
+        conn.commit()
+        messagebox.showinfo("Success", "User registered successfully!")
+    except sqlite3.IntegrityError:
+        messagebox.showerror("Registration Error", "Username already exists!")
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred: {e}")
+    finally:
+        conn.close()
+
+
+def login(username, password):
+    try:
+        conn = sqlite3.connect('inventory.db')
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT password, role FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+
+        if result and bcrypt.checkpw(password.encode(), result[0].encode()):
+            return result[1]  # Return role
+        else:
+            return None
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred: {e}")
+    finally:
+        conn.close()
+    return None
+
+
+def login_window():
+    def authenticate():
+        username = username_entry.get()
+        password = password_entry.get()
+
+        role = login(username, password)
+        if role:
+            messagebox.showinfo("Login Successful", f"Welcome, {role}!")
+            window.destroy()  # Close the login window
+            main_dashboard(role)
+        else:
+            messagebox.showerror("Login Failed", "Invalid credentials!")
+
+    window = tk.Tk()
+    window.title("Login")
+
+    tk.Label(window, text="Username:").pack()
+    username_entry = tk.Entry(window)
+    username_entry.pack()
+
+    tk.Label(window, text="Password:").pack()
+    password_entry = tk.Entry(window, show="*")
+    password_entry.pack()
+
+    tk.Button(window, text="Login", command=authenticate).pack()
+
+    window.mainloop()
+
+
+def main_dashboard(role):
+    def product_management_window():
+        product_window = tk.Toplevel()
+        product_window.title("Manage Products")
+
+        tk.Label(product_window, text="Product Name:").pack()
+        name_entry = tk.Entry(product_window)
+        name_entry.pack()
+
+        tk.Label(product_window, text="Quantity:").pack()
+        quantity_entry = tk.Entry(product_window)
+        quantity_entry.pack()
+
+        def add_product():
+            try:
+                name = name_entry.get().strip()
+                quantity = int(quantity_entry.get().strip())
+
+                if not name:
+                    messagebox.showerror("Input Error", "Product name cannot be empty!")
+                    return
+
+                if quantity <= 0:
+                    messagebox.showerror("Input Error", "Quantity must be a positive integer!")
+                    return
+
+                add_product_to_db(name, quantity)
+                messagebox.showinfo("Success", f"Product '{name}' added successfully!")
+                product_window.destroy()  # Close the product window after adding
+            except ValueError:
+                messagebox.showerror("Input Error", "Please enter a valid quantity!")
+
+        tk.Button(product_window, text="Add Product", command=add_product).pack()
+
+    dashboard = tk.Tk()
+    dashboard.title("Dashboard")
+
+    if role == "Admin":
+        tk.Button(dashboard, text="Manage Products", command=product_management_window).pack()
+    tk.Button(dashboard, text="Generate Reports").pack()
+
+    dashboard.mainloop()
+
+
+def add_product_to_db(name, quantity):
+    try:
+        conn = sqlite3.connect('inventory.db')
+        cursor = conn.cursor()
+
+        # Example static values for category, price, and low_stock_threshold
+        category = "General"
+        price = 10.0
+        low_stock_threshold = 5
+
+        cursor.execute('''INSERT INTO products (name, category, price, quantity, low_stock_threshold) 
+                          VALUES (?, ?, ?, ?, ?)''', 
+                       (name, category, price, quantity, low_stock_threshold))
+
+        conn.commit()
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred: {e}")
+    finally:
+        conn.close()
+
+
+
+# Initialize the database
+initialize_db()
+
+# Run the login window
+login_window()
